@@ -14,6 +14,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DmShared.UI", "..\DmShared.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FFmpeg", "FFmpeg.NET\FFmpeg\FFmpeg.csproj", "{C01178B4-A869-45F8-9B2B-7683F9EBB53D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DmShared.Graphic", "..\DmShared.Graphic\DmShared.Graphic.csproj", "{476F69F9-1ED8-4F50-BBAD-A28E05C6968E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,6 +38,10 @@ Global
 		{C01178B4-A869-45F8-9B2B-7683F9EBB53D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C01178B4-A869-45F8-9B2B-7683F9EBB53D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C01178B4-A869-45F8-9B2B-7683F9EBB53D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{476F69F9-1ED8-4F50-BBAD-A28E05C6968E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{476F69F9-1ED8-4F50-BBAD-A28E05C6968E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{476F69F9-1ED8-4F50-BBAD-A28E05C6968E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{476F69F9-1ED8-4F50-BBAD-A28E05C6968E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

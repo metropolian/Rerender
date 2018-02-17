@@ -1,4 +1,6 @@
-﻿using DmShared.UI;
+﻿using DmShared;
+using DmShared.Graphic;
+using DmShared.UI;
 using EmergenceGuardian.FFmpeg;
 using ShellLib;
 using System;
@@ -18,11 +20,12 @@ namespace Rerender
         private WorkingState CurrentState = WorkingState.Idle;
         private BackgroundWorker worker;
         private FFmpegProcess worker_process;
+        private string Temp_Dir;
         private string Overlay_fname;
 
         private DateTime start_time;
         private TimeSpan inteval_time;
-        private TaskbarItemInfo WindowsTaskbar;
+        private Taskbar WindowsTaskbar;
         
         public FormMainConvertor()
         {
@@ -31,6 +34,8 @@ namespace Rerender
 
         private void FormMainConvertor_Load(object sender, EventArgs e)
         {
+            Temp_Dir = Path.GetTempPath();
+
             FFmpegConfig.FFmpegPath = Path.GetDirectoryName(Application.ExecutablePath) + @"\ffmpeg.exe";
             FFmpegConfig.UserInterfaceManager = new FFmpegUserInterfaceManager(this);
             worker = new BackgroundWorker();
@@ -38,10 +43,13 @@ namespace Rerender
             worker.WorkerReportsProgress = true;
             worker.ProgressChanged += Worker_ProgressChanged;
             worker.RunWorkerCompleted += Worker_RunWorkerCompleted;
-            WindowsTaskbar = new TaskbarItemInfo();
+            WindowsTaskbar = new Taskbar(this);
 
             AllowDrop = true;
 
+
+            var renderer = new GdiRenderer();
+            imageDesignPanel1.SetRenderer(renderer);
         }
 
         private void FormMainConvertor_DragEnter(object sender, DragEventArgs e)
@@ -73,8 +81,14 @@ namespace Rerender
 
         private void LoadFile(string fname)
         {
-            var data = MediaInfo.GetFileInfo(fname);
+            //var data = MediaInfo.GetFileInfo(fname);
+
+            var thumb_fname = Path.Combine(Temp_Dir, Path.GetFileNameWithoutExtension(Path.GetFileName(fname)) + ".png");
             
+            var options = new ProcessStartOptions();
+            var data = new FFmpegProcess(options);
+            data.RunFFmpeg(string.Format(@"-y -i ""{0}"" -vframes 1 ""{1}"" ", fname, thumb_fname));
+
             if (data.VideoStream != null)
             {
                 Tx_src_fname.Text = fname;
@@ -93,6 +107,12 @@ namespace Rerender
                 Px_progress.Maximum = (int) data.FrameCount;
 
                 Bt_start.Enabled = true;
+
+
+                FileStream fread = new FileStream(thumb_fname, FileMode.Open);
+                imageDesignPanel1.Image = new Bitmap(fread);
+                fread.Close();
+                File.Delete(thumb_fname);
             }
 
             
@@ -295,14 +315,14 @@ namespace Rerender
                 case WorkingState.Idle:
                     UpdateStatusText(Color.Black, "...");
 
-                    WindowsTaskbar.ProgressState = TaskbarItemProgressState.None;
+                    WindowsTaskbar.Reset();
                     break;
                 
                 case WorkingState.Starting:
                     UpdateStatusText(Color.DarkOrange, "Starting...");
                     start_time = DateTime.Now;
-                    WindowsTaskbar.ProgressState = TaskbarItemProgressState.Normal;
-                    WindowsTaskbar.ProgressValue = 0;
+                    WindowsTaskbar.ProgressBegin();
+                    WindowsTaskbar.ProgressUpdate(0);
                     break;
 
                 case WorkingState.Running:
@@ -314,9 +334,9 @@ namespace Rerender
                         {
                             Px_progress.Value = (int)status.Frame;
                             inteval_time = DateTime.Now - start_time;
+
                             Lb_status_time.Text = string.Format("{0:00}:{1:00}:{2:00}", inteval_time.Hours, inteval_time.Minutes, inteval_time.Seconds);
-                            WindowsTaskbar.ProgressState = TaskbarItemProgressState.Normal;
-                            WindowsTaskbar.ProgressValue = (double)Px_progress.Value / (double)Px_progress.Maximum;
+                            WindowsTaskbar.ProgressUpdate((double)Px_progress.Value / (double)Px_progress.Maximum);
                         }
                         catch { }
                     }
@@ -327,8 +347,7 @@ namespace Rerender
                     Px_progress.Value = Px_progress.Maximum;
                     Bt_Stop.Enabled = false;
                     Bt_start.Enabled = true;
-                    WindowsTaskbar.ProgressState = TaskbarItemProgressState.Normal;
-                    WindowsTaskbar.ProgressValue = 1;
+                    WindowsTaskbar.ProgressEnd();
 
                     FlashWindow.Flash(this, 3);
                     break;
@@ -339,19 +358,20 @@ namespace Rerender
 
                 case WorkingState.Timeout:
                     UpdateStatusText(Color.Red, "Timeout");
-                    WindowsTaskbar.ProgressState = TaskbarItemProgressState.Error;
+                    WindowsTaskbar.ProgressError();
                     break;
 
                 case WorkingState.Error:
                     if (data == null)
                         data = "";
                     UpdateStatusText(Color.Red, "Error: " + data.ToString());
-                    WindowsTaskbar.ProgressState = TaskbarItemProgressState.Error;
+
+                    WindowsTaskbar.ProgressError();
                     break;
 
                 case WorkingState.Cancelled:
                     UpdateStatusText(Color.DarkOrange, "Cancelled");
-                    WindowsTaskbar.ProgressState = TaskbarItemProgressState.Paused;
+                    WindowsTaskbar.ProgressPause();
                     break;
 
             }
@@ -437,6 +457,11 @@ namespace Rerender
         private void Tx_dst_fname_DoubleClick(object sender, EventArgs e)
         {
             Bt_dst_browse_Click(sender, e);
+        }
+
+        private void Bt_select_crop_Click(object sender, EventArgs e)
+        {
+            
         }
     }
 
