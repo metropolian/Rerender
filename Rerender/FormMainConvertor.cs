@@ -4,29 +4,132 @@ using DmShared.UI;
 using EmergenceGuardian.FFmpeg;
 using ShellLib;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
-using System.Windows.Shell;
-using Windows.UI.Notifications;
 
 namespace Rerender
 {
     public partial class FormMainConvertor : Form
     {
+        public static string ConfigFileName = "rerender.cfg.json";
+
         private WorkingState CurrentState = WorkingState.Idle;
         private BackgroundWorker worker;
         private FFmpegProcess worker_process;
         private string Temp_Dir;
-        private string Overlay_fname;
-
+        
         private DateTime start_time;
         private TimeSpan inteval_time;
         private Taskbar WindowsTaskbar;
-        
+        private OperationType operation;
+
+        public bool Is_Multiple_Files { get { return Tx_src_fname.Text.IndexOf(',') >= 0; } }
+        public string Source_Filenames { get { return Tx_src_fname.Text; } }
+
+
+
+        [PropertyData]
+        public int Window_Left { get { return base.Left; } set { base.Left = value; } }
+
+        [PropertyData]
+        public int Window_Top { get { return base.Top; } set { base.Top = value; } }
+
+        [PropertyData]
+        public int Window_Width { get { return base.Width; } set { base.Width = value; } }
+
+        [PropertyData]
+        public int Window_Height { get { return base.Height; } set { base.Height = value; } }
+
+        [PropertyData]
+        public bool AlwaysOnTop { get { return base.TopMost; } set { base.TopMost = value; } }
+
+        [PropertyData]
+        public string V_codec { get { return Tx_vcodec.Text; } set { Tx_vcodec.Text = value; } }
+
+        [PropertyData]
+        public string V_bitrate { get { return Tx_dst_v_bitrate.Text; } set { Tx_dst_v_bitrate.Text = value; } }
+
+        [PropertyData]
+        public string V_preset { get { return Tx_dst_preset.Text; } set { Tx_dst_preset.Text = value; } }
+
+        [PropertyData]
+        public string V_dst_width { get { return Tx_dst_W.Text; } set { Tx_dst_W.Text = value; } }
+
+        [PropertyData]
+        public string V_dst_height { get { return Tx_dst_H.Text; } set { Tx_dst_H.Text = value; } }
+
+        [PropertyData]
+        public string V_dst_fps { get { return Tx_dst_fps.Text; } set { Tx_dst_fps.Text = value; } }
+
+        [PropertyData]
+        public string A_codec { get { return Tx_acodec.Text; } set { Tx_acodec.Text = value; } }
+
+        [PropertyData]
+        public string A_bitrate { get { return Tx_dst_a_bitrate.Text; } set { Tx_dst_a_bitrate.Text = value; } }
+
+        [PropertyData]
+        public bool Use_Filters { get { return Ch_filters.Checked; } set { Ch_filters.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_Overlay { get { return Ch_overlay.Checked; } set { Ch_overlay.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_Deshake { get { return Ch_deshake.Checked; } set { Ch_deshake.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_H_flip { get { return Ch_hflip.Checked; } set { Ch_hflip.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_V_flip { get { return Ch_vflip.Checked; } set { Ch_vflip.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_BlurBG { get { return Ch_BlurBG.Checked; } set { Ch_BlurBG.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_LockOutSize { get { return Ch_LockOutSize.Checked; } set { Ch_LockOutSize.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_Hwaccel { get { return Ch_src_hwaccel.Checked; } set { Ch_src_hwaccel.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_CustomFilters { get { return Ch_CustomFilters.Checked; } set { Ch_CustomFilters.Checked = value; } }
+
+        [PropertyData]
+        public string Custom_Filters { get { return Tx_filters.Text; } set { Tx_filters.Text = value; } }
+
+        [PropertyData]
+        public string Overlay_filename
+        {
+            get
+            {
+                return (string)Pic_overlay.Tag;
+            }
+
+            set
+            {
+                try
+                {
+                    if (Pic_overlay.Image != null)
+                    {
+                        Bitmap bitmap = (Bitmap)Pic_overlay.Image;
+                        bitmap.Dispose();
+                    }
+
+                    Bitmap image = new Bitmap(value);
+                    Pic_overlay.Image = image;
+                    Pic_overlay.Tag = value;
+                }
+                catch {
+                }
+            }
+        }
+
+
         public FormMainConvertor()
         {
             InitializeComponent();
@@ -47,15 +150,33 @@ namespace Rerender
 
             AllowDrop = true;
 
-
             var renderer = new GdiRenderer();
             imageDesignPanel1.SetRenderer(renderer);
+        }
+
+        private void FormMainConvertor_Shown(object sender, EventArgs e)
+        {
+            ClassPropertyData.LoadFromFile(this, ConfigFileName);
         }
 
         private void FormMainConvertor_DragEnter(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
-                e.Effect = DragDropEffects.Copy;
+            {
+                if ((e.KeyState & 8) == 8)
+                {
+                    e.Effect = DragDropEffects.Copy;
+                }
+                else
+                {
+                    e.Effect = DragDropEffects.Link;
+                }
+
+            }
+
+
+
+
         }
 
         private void FormMainConvertor_DragDrop(object sender, DragEventArgs e)
@@ -118,25 +239,79 @@ namespace Rerender
             
         }
 
+        public enum OperationType
+        {
+            Normal = 0,
+            MergeAV = 1,
+            Stream = 2
+        }
+
+        private string[] Get_Source_Filenames()
+        {
+            List<string> filenames = new List<string>();
+            foreach (var item in Source_Filenames.Split(','))
+            {
+                string fname = item.Trim();
+                if (fname != "")
+                    filenames.Add(fname);
+            }
+            return filenames.ToArray();
+        }
+
         private string Get_Config_Parameters()
         {
+            
             string st_args = "-y ";
             string i_args = " -i \"" + Tx_src_fname.Text + "\" ";
             string o_args = " \"" + Tx_dst_fname.Text + "\" ";
 
-            if (Ch_src_hwaccel.Checked)
+            int op = Tx_operation.SelectedIndex;
+            if (op < 0)
+                op = 0;
+            operation = (OperationType)op;
+
+            if (Uri.IsWellFormedUriString(Tx_dst_fname.Text, UriKind.Absolute))
+                operation = OperationType.Stream;
+
+            if (operation == OperationType.MergeAV)
+                Use_Filters = false;
+
+            if (operation == OperationType.Stream)
+                o_args = " -f flv \"" + Tx_dst_fname.Text + "\" ";
+
+
+            Use_Hwaccel = Ch_src_hwaccel.Checked;
+            if (Use_Hwaccel)
                 i_args = " -hwaccel cuvid " + i_args;
 
-            if (Tx_src_fname.Text.IndexOf(',') >= 0)
+            
+            // Multiple Files Mode
+            if (Is_Multiple_Files && operation == OperationType.Normal)
             {
                 FileInfo finfo = new FileInfo("filelist.txt");
                 StreamWriter f = new StreamWriter(finfo.FullName, false);
                 foreach (var item in Tx_src_fname.Text.Split(','))
                 {
-                    f.WriteLine("file '" + item + "'");
+                    string fname = item.Trim();
+                    if (fname != "")
+                        f.WriteLine("file '" + fname + "'");
                 }
                 f.Close();
+                
                 i_args = " -f concat -safe 0 -i \"" + finfo.FullName + "\" ";
+            }
+
+            if (operation == OperationType.MergeAV)
+            {
+                List<string> filenames = new List<string>();
+                i_args = " ";
+                foreach (var item in Tx_src_fname.Text.Split(','))
+                {
+                    string fname = item.Trim();
+                    if (fname != "")
+                        i_args += " -i \"" + fname + "\" ";
+                }
+
             }
 
             string flip = "";
@@ -149,15 +324,27 @@ namespace Rerender
 
             string v_filters = "";
             if (Tx_filters.Text != "")
-                v_filters += Tx_filters.Text + ",";
+            {
+                v_filters += Tx_filters.Text;
+                //if (v_filters.LastIndexOf("]") < 0)
+                    v_filters += ",";
+            }
 
-            v_filters += flip + 
-                "scale=" + Tx_dst_W.Text + ":" + Tx_dst_H.Text + ":force_original_aspect_ratio=decrease , " + 
+            v_filters += flip;
+
+            if (Ch_BlurBG.Checked)
+            {
+                v_filters += @"split[original][copy];[copy]scale=ih*16/9:-1,crop=h=iw*9/16,boxblur=luma_radius=min(w\,h)/5:chroma_radius=min(cw\,ch)/5:luma_power=1[blurred];[blurred][original]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2";
+                v_filters += ",";
+            }
+
+            v_filters += 
+                "scale=" + Tx_dst_W.Text + ":" + Tx_dst_H.Text + ":force_original_aspect_ratio=decrease , " +
                 "pad=" + Tx_dst_W.Text + ":" + Tx_dst_H.Text + ":(ow-iw)/2:(oh-ih)/2 ";
 
-            if (Ch_overlay.Checked)
+            if (Use_Overlay)
             {
-                i_args += " -i \"" + Overlay_fname + "\" ";
+                i_args += " -i \"" + Overlay_filename + "\" ";
 
                 if (Ch_overlay_CC.Checked)
                     v_filters += ", overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2 ";
@@ -183,7 +370,7 @@ namespace Rerender
 
 
             string v_args = " -vcodec " + Tx_vcodec.Text + " -preset " + Tx_dst_preset.Text + " -pix_fmt " + Tx_dst_pixel_format.Text + " -crf " + Tx_crf.Text + " ";
-            string fv_args = " -filter_complex \" " + v_filters + " \" ";
+            string fv_args = " -filter_complex \"[0:v] " + v_filters + " [v] \" -map [v] -map 0:a ";
             string a_args = " -acodec " + Tx_acodec.Text;
 
             if (Tx_acodec.Text == "aac")
@@ -204,12 +391,21 @@ namespace Rerender
             if (Tx_dst_length.Text != "")
                 i_args = " -t " + Tx_dst_length.Text + " " + i_args;
 
+
+            if (operation == OperationType.MergeAV)
+                a_args += " -map 0:v:0 -map 1:a:0 ";
+
+
             StringBuilder arguments = new StringBuilder();
             arguments.Append(st_args);
             arguments.Append(i_args);
-            arguments.Append(v_args);
-            arguments.Append(fv_args);
-            arguments.Append(a_args);
+
+            if (Tx_vcodec.Text != "")
+                arguments.Append(v_args);
+            if (Use_Filters)
+                arguments.Append(fv_args);
+            if (Tx_acodec.Text != "")
+                arguments.Append(a_args);
             arguments.Append(o_args);
             return arguments.ToString();
         }
@@ -220,6 +416,8 @@ namespace Rerender
 
             Bt_start.Enabled = false;
             Bt_Stop.Enabled = true;
+
+            
 
             UpdateStatus(WorkingState.Starting);
             worker.RunWorkerAsync(arguments);
@@ -265,16 +463,22 @@ namespace Rerender
         private void Worker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
             StringReader reader = new StringReader(worker_process.Output);
+            StringBuilder errors = new StringBuilder();
+            bool error_found = false;
             string line = "";
+            string last_line = "";
             while ((line = reader.ReadLine()) != null)
             {
+                Console.WriteLine(line);
                 if (line.IndexOf("Error") >= 0)
                 {
-                    break;
+                    errors.AppendLine(line);
+                    error_found = true;
                 }
+                last_line = line;
             }
+            errors.AppendLine(last_line);
 
-            Console.WriteLine(line);
             UpdateStatus(WorkingState.Finished);
 
             CompletionStatus result = (CompletionStatus) e.Result;
@@ -284,7 +488,8 @@ namespace Rerender
                     UpdateStatus(WorkingState.Success);
                     break;
                 case CompletionStatus.Error:
-                    UpdateStatus(WorkingState.Error, line);
+                    Console.WriteLine("Parameters: " + worker_process.CommandWithArgs);
+                    UpdateStatus(WorkingState.Error, errors.ToString());
                     break;
                 case CompletionStatus.Cancelled:
                     UpdateStatus(WorkingState.Cancelled);
@@ -402,13 +607,11 @@ namespace Rerender
                 dialog.Filter = "Image Files (*.BMP;*.PNG;*.JPG;*.GIF)|*.BMP;*.PNG;*.JPG;*.GIF|All files (*.*)|*.*";
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
-                    Overlay_fname = dialog.FileName;
-                    Bitmap image = new Bitmap(Overlay_fname);
-                    Pic_overlay.Image = image;
+                    Overlay_filename = dialog.FileName;
                 }
             }
-
         }
+
 
         private void Bt_src_browse_Click(object sender, EventArgs e)
         {
@@ -447,6 +650,11 @@ namespace Rerender
                 }
                 e.Cancel = true;
             }
+
+            if (!e.Cancel)
+            {
+                ClassPropertyData.SaveToFile(this, ConfigFileName);
+            }
         }
 
         private void Tx_src_fname_DoubleClick(object sender, EventArgs e)
@@ -462,6 +670,34 @@ namespace Rerender
         private void Bt_select_crop_Click(object sender, EventArgs e)
         {
             
+        }
+
+        private void label2_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void Tx_src_W_TextChanged(object sender, EventArgs e)
+        {
+            if (Tx_src_W.Text != "" && Tx_dst_W.Text == "")
+                Tx_dst_W.Text = Tx_src_W.Text;
+        }
+
+        private void Tx_src_H_TextChanged(object sender, EventArgs e)
+        {
+            if (Tx_src_H.Text != "" && Tx_dst_H.Text == "")
+                Tx_dst_H.Text = Tx_dst_H.Text;
+
+        }
+
+        private void Tx_fname_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            TextBox Tx = ((TextBox)sender);
+            if (Tx.Text != "")
+            {
+                Tx.SelectAll();
+                Tx.Copy();
+            }
         }
     }
 

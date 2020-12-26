@@ -8,13 +8,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Rerender", "Rerender\Rerend
 		{53FE7C43-457B-461D-9A4A-6D115B2C7A3B} = {53FE7C43-457B-461D-9A4A-6D115B2C7A3B}
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DmShared", "..\DmShared.2\DmShared.2\DmShared.csproj", "{A5289D08-4418-4E6D-B284-98D8A61A6C33}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DmShared", "..\..\_DotNet\DmShared.2\DmShared.2\DmShared.csproj", "{A5289D08-4418-4E6D-B284-98D8A61A6C33}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DmShared.UI", "..\DmShared.2\DmShared.UI\DmShared.UI.csproj", "{53FE7C43-457B-461D-9A4A-6D115B2C7A3B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DmShared.UI", "..\..\_DotNet\DmShared.2\DmShared.UI\DmShared.UI.csproj", "{53FE7C43-457B-461D-9A4A-6D115B2C7A3B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FFmpeg", "FFmpeg.NET\FFmpeg\FFmpeg.csproj", "{C01178B4-A869-45F8-9B2B-7683F9EBB53D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DmShared.Graphic", "..\DmShared.Graphic\DmShared.Graphic.csproj", "{476F69F9-1ED8-4F50-BBAD-A28E05C6968E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DmShared.Graphic", "..\..\_DotNet\DmShared.Graphic\DmShared.Graphic.csproj", "{476F69F9-1ED8-4F50-BBAD-A28E05C6968E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
