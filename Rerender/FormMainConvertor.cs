@@ -16,7 +16,8 @@ namespace Rerender
 {
     public partial class FormMainConvertor : Form
     {
-        public static string ConfigFileName = "rerender.cfg.json";
+        public static string ConfigFileName_Prefix = "rerender.";
+        public static string ConfigFileName_Suffix = ".cfg.json";
 
         private WorkingState CurrentState = WorkingState.Idle;
         private BackgroundWorker worker;
@@ -31,7 +32,11 @@ namespace Rerender
         public bool Is_Multiple_Files { get { return Tx_src_fname.Text.IndexOf(',') >= 0; } }
         public string Source_Filenames { get { return Tx_src_fname.Text; } }
 
+        [PropertyData]
+        public string Current_ProfileName { get; set; }
 
+        [PropertyData]
+        public string LastDirectory { get; set; }
 
         [PropertyData]
         public int Window_Left { get { return base.Left; } set { base.Left = value; } }
@@ -73,7 +78,20 @@ namespace Rerender
         public string A_bitrate { get { return Tx_dst_a_bitrate.Text; } set { Tx_dst_a_bitrate.Text = value; } }
 
         [PropertyData]
+        public string A_filters { get { return Tx_afilters.Text; } set { Tx_afilters.Text = value; } }
+
+        [PropertyData]
+        public string Cpuflags { get { return Tx_cpuflags.Text; } set { Tx_cpuflags.Text = value; } }
+
+        [PropertyData]
         public bool Use_Filters { get { return Ch_filters.Checked; } set { Ch_filters.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_VisualFilters { get { return Ch_VisualFilters.Checked; } set { Ch_VisualFilters.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_AudioFilters { get { return Ch_AudioFilters.Checked; } set { Ch_AudioFilters.Checked = value; } }
+
 
         [PropertyData]
         public bool Use_Overlay { get { return Ch_overlay.Checked; } set { Ch_overlay.Checked = value; } }
@@ -91,16 +109,22 @@ namespace Rerender
         public bool Use_BlurBG { get { return Ch_BlurBG.Checked; } set { Ch_BlurBG.Checked = value; } }
 
         [PropertyData]
-        public bool Use_LockOutSize { get { return Ch_LockOutSize.Checked; } set { Ch_LockOutSize.Checked = value; } }
+        public bool Use_ScaleFilters { get { return Ch_dst_scale.Checked; } set { Ch_dst_scale.Checked = value; } }
 
         [PropertyData]
         public bool Use_Hwaccel { get { return Ch_src_hwaccel.Checked; } set { Ch_src_hwaccel.Checked = value; } }
 
         [PropertyData]
-        public bool Use_CustomFilters { get { return Ch_CustomFilters.Checked; } set { Ch_CustomFilters.Checked = value; } }
+        public bool Use_CustomFilters { get { return Ch_VisualFilters.Checked; } set { Ch_VisualFilters.Checked = value; } }
+
+        [PropertyData]
+        public bool Use_NullOutput { get { return Ch_dst_null.Checked; } set { Ch_dst_null.Checked = value; } }
 
         [PropertyData]
         public string Custom_Filters { get { return Tx_filters.Text; } set { Tx_filters.Text = value; } }
+
+        [PropertyData]
+        public string Overlay_Directory { get; set; }
 
         [PropertyData]
         public string Overlay_filename
@@ -112,23 +136,11 @@ namespace Rerender
 
             set
             {
-                try
-                {
-                    if (Pic_overlay.Image != null)
-                    {
-                        Bitmap bitmap = (Bitmap)Pic_overlay.Image;
-                        bitmap.Dispose();
-                    }
-
-                    Bitmap image = new Bitmap(value);
-                    Pic_overlay.Image = image;
-                    Pic_overlay.Tag = value;
-                }
-                catch {
-                }
+                SetOverlay_Filename(value);
             }
         }
 
+        public string[] CommandArgs { get; private set; }
 
         public FormMainConvertor()
         {
@@ -137,7 +149,11 @@ namespace Rerender
 
         private void FormMainConvertor_Load(object sender, EventArgs e)
         {
+            Ls_ProfileName.Items.Clear();
+            Ls_ProfileName.Items.AddRange(ListProfiles());
+
             Temp_Dir = Path.GetTempPath();
+            LastDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
 
             FFmpegConfig.FFmpegPath = Path.GetDirectoryName(Application.ExecutablePath) + @"\ffmpeg.exe";
             FFmpegConfig.UserInterfaceManager = new FFmpegUserInterfaceManager(this);
@@ -156,7 +172,19 @@ namespace Rerender
 
         private void FormMainConvertor_Shown(object sender, EventArgs e)
         {
-            ClassPropertyData.LoadFromFile(this, ConfigFileName);
+            if (Ls_ProfileName.Items.Count > 0)
+            {
+                Ls_ProfileName.Text = "default";
+            }
+                
+
+            CommandArgs = Environment.GetCommandLineArgs();
+
+            if (CommandArgs.Length > 1)
+            {
+                string Fullname = new FileInfo(CommandArgs[1]).FullName;
+                LoadFile(Fullname);
+            }
         }
 
         private void FormMainConvertor_DragEnter(object sender, DragEventArgs e)
@@ -173,10 +201,6 @@ namespace Rerender
                 }
 
             }
-
-
-
-
         }
 
         private void FormMainConvertor_DragDrop(object sender, DragEventArgs e)
@@ -187,6 +211,61 @@ namespace Rerender
                 MessageBox.Show("Convertor is working.", this.Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             else
                 LoadFiles(files);
+        }
+
+        private void FormMainConvertor_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (worker.IsBusy)
+            {
+                if (MessageBox.Show("Stop Convertor ?", this.Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Exclamation) == DialogResult.OK)
+                {
+                    Worker_Stop();
+                }
+                e.Cancel = true;
+            }
+
+            if (!e.Cancel)
+            {
+                SaveProfile(Ls_ProfileName.Text);
+            }
+        }
+
+        private string[] ListProfiles()
+        {
+            string pattern = ConfigFileName_Prefix + "*" + ConfigFileName_Suffix;
+            string[] files = Directory.GetFiles(".", pattern);
+            List<string> Names = new List<string>();
+            foreach (string fname in files)
+            {
+                int St = fname.IndexOf(ConfigFileName_Prefix);
+                if (St < 0)
+                    continue;
+                St += ConfigFileName_Prefix.Length;
+                int En = fname.IndexOf(ConfigFileName_Suffix);
+                if (En < 0)
+                    continue;
+                string name = fname.Substring(St, En - St);
+                Names.Add(name);
+            }
+            return Names.ToArray();
+        }
+
+        private void LoadProfile(string Name)
+        {
+            if (string.IsNullOrWhiteSpace(Name))
+                return;
+                
+            string ConfigFileName = ConfigFileName_Prefix + Name.ToLower() + ConfigFileName_Suffix;
+            ClassPropertyData.LoadFromFile(this, ConfigFileName);
+            Current_ProfileName = Name;
+        }
+
+        private void SaveProfile(string Name)
+        {
+            if (string.IsNullOrWhiteSpace(Name))
+                Name = "default";
+            string ConfigFileName = ConfigFileName_Prefix + Name.ToLower() + ConfigFileName_Suffix;
+            ClassPropertyData.SaveToFile(this, ConfigFileName);
         }
 
         private void LoadFiles(string[] files)
@@ -202,10 +281,11 @@ namespace Rerender
 
         private void LoadFile(string fname)
         {
-            //var data = MediaInfo.GetFileInfo(fname);
+            //var data = MediaInfo.GetFileInfo(fname);        
+            string thumb_fname = Path.Combine(Temp_Dir, Path.GetFileNameWithoutExtension(Path.GetFileName(fname)) + ".png");
 
-            var thumb_fname = Path.Combine(Temp_Dir, Path.GetFileNameWithoutExtension(Path.GetFileName(fname)) + ".png");
-            
+            LastDirectory = Path.GetDirectoryName(fname);
+
             var options = new ProcessStartOptions();
             var data = new FFmpegProcess(options);
             data.RunFFmpeg(string.Format(@"-y -i ""{0}"" -vframes 1 ""{1}"" ", fname, thumb_fname));
@@ -235,9 +315,31 @@ namespace Rerender
                 fread.Close();
                 File.Delete(thumb_fname);
             }
-
             
         }
+
+        private void SetOverlay_Filename(string value)
+        {
+            try
+            {
+                if (Pic_overlay.Image != null)
+                {
+                    Bitmap bitmap = (Bitmap)Pic_overlay.Image;
+                    bitmap.Dispose();
+                }
+
+                Bitmap image = new Bitmap(value);
+                Pic_overlay.Image = image;
+                Pic_overlay.Tag = value;
+
+                Overlay_Directory = Path.GetDirectoryName(value);
+            }
+            catch
+            {
+            }
+        }
+
+
 
         public enum OperationType
         {
@@ -284,7 +386,9 @@ namespace Rerender
             if (Use_Hwaccel)
                 i_args = " -hwaccel cuvid " + i_args;
 
-            
+            if (Tx_cpuflags.Text != "")
+                st_args += " -cpuflags " + Tx_cpuflags.Text;
+
             // Multiple Files Mode
             if (Is_Multiple_Files && operation == OperationType.Normal)
             {
@@ -298,7 +402,7 @@ namespace Rerender
                 }
                 f.Close();
                 
-                i_args = " -f concat -safe 0 -i \"" + finfo.FullName + "\" ";
+                o_args = " -f concat -safe 0 -i \"" + finfo.FullName + "\" ";
             }
 
             if (operation == OperationType.MergeAV)
@@ -314,74 +418,87 @@ namespace Rerender
 
             }
 
-            string flip = "";
-            if (Ch_deshake.Checked)
-                flip += "deshake,";
-            if (Ch_hflip.Checked)
-                flip += "hflip,";
-            if (Ch_vflip.Checked)
-                flip += "vflip,";
-
-            string v_filters = "";
-            if (Tx_filters.Text != "")
+            List<string> v_filters = new List<string>();
+            if (Use_VisualFilters && Tx_filters.Text != "")
             {
-                v_filters += Tx_filters.Text;
-                //if (v_filters.LastIndexOf("]") < 0)
-                    v_filters += ",";
+                v_filters.Add( Tx_filters.Text );
             }
 
-            v_filters += flip;
+            if (Ch_deshake.Checked)
+                v_filters.Add("deshake");
+            if (Ch_hflip.Checked)
+                v_filters.Add("hflip");
+            if (Ch_vflip.Checked)
+                v_filters.Add("vflip");
 
             if (Ch_BlurBG.Checked)
+                v_filters.Add(
+                    @"split[original][copy];[copy]scale=ih*16/9:-1,crop=h=iw*9/16,boxblur=luma_radius=min(w\,h)/5:chroma_radius=min(cw\,ch)/5:luma_power=1[blurred];[blurred][original]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2"
+                );
+
+            if (Ch_dst_scale.Checked)
             {
-                v_filters += @"split[original][copy];[copy]scale=ih*16/9:-1,crop=h=iw*9/16,boxblur=luma_radius=min(w\,h)/5:chroma_radius=min(cw\,ch)/5:luma_power=1[blurred];[blurred][original]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2";
-                v_filters += ",";
+                v_filters.Add(
+                    "scale=" + Tx_dst_W.Text + ":" + Tx_dst_H.Text + ":force_original_aspect_ratio=decrease"
+                );
+                v_filters.Add(
+                    "pad=" + Tx_dst_W.Text + ":" + Tx_dst_H.Text + ":(ow-iw)/2:(oh-ih)/2 "
+                );
             }
 
-            v_filters += 
-                "scale=" + Tx_dst_W.Text + ":" + Tx_dst_H.Text + ":force_original_aspect_ratio=decrease , " +
-                "pad=" + Tx_dst_W.Text + ":" + Tx_dst_H.Text + ":(ow-iw)/2:(oh-ih)/2 ";
+            if (Ch_Vidstab_detect.Checked)
+            {
+                v_filters.Add("vidstabdetect=stepsize=32:shakiness=10:accuracy=10:result=transforms.trf");
+                Ch_dst_null.Checked = true;
+                Ch_overlay.Checked = false;
+            }
+
+            if (Ch_Vidstab.Checked)
+            {                
+                v_filters.Add("vidstabtransform=input=transforms.trf:zoom=0:smoothing=10");
+                Ch_dst_null.Checked = false;
+                Ch_overlay.Checked = false;                
+            }
 
             if (Use_Overlay)
             {
                 i_args += " -i \"" + Overlay_filename + "\" ";
 
                 if (Ch_overlay_CC.Checked)
-                    v_filters += ", overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2 ";
+                    v_filters.Add(" overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2 ");
                 else if (Ch_overlay_LT.Checked)
-                    v_filters += ", overlay=0:0 ";
+                    v_filters.Add(" overlay=0:0 ");
                 else if (Ch_overlay_CT.Checked)
-                    v_filters += ", overlay=(main_w-overlay_w)/2:0 ";
+                    v_filters.Add(" overlay=(main_w-overlay_w)/2:0 ");
                 else if (Ch_overlay_RT.Checked)
-                    v_filters += ", overlay=main_w-overlay_w:0 ";
+                    v_filters.Add(" overlay=main_w-overlay_w:0 ");
                 else if (Ch_overlay_LC.Checked)
-                    v_filters += ", overlay=0:(main_h-overlay_h)/2 ";
+                    v_filters.Add(" overlay=0:(main_h-overlay_h)/2 ");
                 else if (Ch_overlay_RC.Checked)
-                    v_filters += ", overlay=main_w-overlay_w:(main_h-overlay_h)/2 ";
+                    v_filters.Add(" overlay=main_w-overlay_w:(main_h-overlay_h)/2 ");
                 else if (Ch_overlay_LB.Checked)
-                    v_filters += ", overlay=0:main_h-overlay_h  ";
+                    v_filters.Add(" overlay=0:main_h-overlay_h  ");
                 else if (Ch_overlay_CB.Checked)
-                    v_filters += ", overlay=(main_w-overlay_w)/2:main_h-overlay_h ";
+                    v_filters.Add(" overlay=(main_w-overlay_w)/2:main_h-overlay_h ");
                 else if (Ch_overlay_RB.Checked)
-                    v_filters += ", overlay=main_w-overlay_w:main_h-overlay_h ";
-
-
+                    v_filters.Add(" overlay=main_w-overlay_w:main_h-overlay_h ");
             }
 
-
             string v_args = " -vcodec " + Tx_vcodec.Text + " -preset " + Tx_dst_preset.Text + " -pix_fmt " + Tx_dst_pixel_format.Text + " -crf " + Tx_crf.Text + " ";
-            string fv_args = " -filter_complex \"[0:v] " + v_filters + " [v] \" -map [v] -map 0:a ";
+            string fv_args = " -filter_complex \"[0:v] " + string.Join(",", v_filters.ToArray()) + " [v] \" -map [v] -map 0:a ";
             string a_args = " -acodec " + Tx_acodec.Text;
 
             if (Tx_acodec.Text == "aac")
                 a_args += " -strict -2 ";
+
+            if (Tx_afilters.Text != "")
+                a_args += " -af \"" + Tx_afilters.Text + "\" ";
 
             if (Tx_dst_v_bitrate.Text != "")
                 a_args += " -b:v " + Tx_dst_v_bitrate.Text;
 
             if (Tx_dst_a_bitrate.Text != "")
                 a_args += " -b:a " + Tx_dst_a_bitrate.Text;
-            
 
             if (Tx_dst_fps.Text != "")
                 v_args += " -r " + Tx_dst_fps.Text;
@@ -391,9 +508,18 @@ namespace Rerender
             if (Tx_dst_length.Text != "")
                 i_args = " -t " + Tx_dst_length.Text + " " + i_args;
 
-
             if (operation == OperationType.MergeAV)
                 a_args += " -map 0:v:0 -map 1:a:0 ";
+
+            if (Ch_dst_null.Checked)
+            {
+                o_args = " -f null NUL ";
+            }
+
+            if (Ch_Vidstab_detect.Checked && Ch_dst_null.Checked)
+            {
+                a_args = "";
+            }
 
 
             StringBuilder arguments = new StringBuilder();
@@ -404,13 +530,13 @@ namespace Rerender
                 arguments.Append(v_args);
             if (Use_Filters)
                 arguments.Append(fv_args);
-            if (Tx_acodec.Text != "")
+            if (Use_AudioFilters && Tx_acodec.Text != "")
                 arguments.Append(a_args);
             arguments.Append(o_args);
             return arguments.ToString();
         }
 
-        private void bt_start_Click(object sender, EventArgs e)
+        private void Bt_Start_Click(object sender, EventArgs e)
         {
             string arguments = Get_Config_Parameters();
 
@@ -427,6 +553,8 @@ namespace Rerender
         {
             Worker_Stop();
         }
+
+
 
         private void Worker_Stop()
         {
@@ -582,6 +710,17 @@ namespace Rerender
             }
         }
 
+        private void Ls_ProfileName_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            object Name = ((ComboBox)sender).SelectedItem;
+            if (Name != null)
+            {
+                if (!string.IsNullOrWhiteSpace(Current_ProfileName))
+                    SaveProfile(Current_ProfileName);
+
+                LoadProfile(Name.ToString());
+            }
+        }
 
 
         private void Bt_open_src_Click(object sender, EventArgs e)
@@ -603,10 +742,11 @@ namespace Rerender
         {
             using (OpenFileDialog dialog = new OpenFileDialog())
             {
+                dialog.InitialDirectory = Overlay_Directory;
                 dialog.CheckFileExists = true;
                 dialog.Filter = "Image Files (*.BMP;*.PNG;*.JPG;*.GIF)|*.BMP;*.PNG;*.JPG;*.GIF|All files (*.*)|*.*";
                 if (dialog.ShowDialog(this) == DialogResult.OK)
-                {
+                {                    
                     Overlay_filename = dialog.FileName;
                 }
             }
@@ -617,11 +757,12 @@ namespace Rerender
         {
             using (OpenFileDialog dialog = new OpenFileDialog())
             {
+                dialog.InitialDirectory = LastDirectory;
                 dialog.CheckFileExists = true;
                 dialog.Filter = "All media files (*.*)|*.*";
                 dialog.Multiselect = true;
                 if (dialog.ShowDialog(this) == DialogResult.OK)
-                {
+                {                    
                     LoadFiles(dialog.FileNames);
                 }
             }
@@ -630,7 +771,8 @@ namespace Rerender
         private void Bt_dst_browse_Click(object sender, EventArgs e)
         {
             using (SaveFileDialog dialog = new SaveFileDialog())
-            {                
+            {
+                dialog.InitialDirectory = LastDirectory;
                 dialog.Filter = "All media files (*.*)|*.*";
                                 
                 if (dialog.ShowDialog(this) == DialogResult.OK)
@@ -640,23 +782,7 @@ namespace Rerender
             }
         }
 
-        private void FormMainConvertor_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            if (worker.IsBusy)
-            {
-                if (MessageBox.Show("Stop Convertor ?", this.Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Exclamation) == DialogResult.OK)
-                {
-                    Worker_Stop();
-                }
-                e.Cancel = true;
-            }
-
-            if (!e.Cancel)
-            {
-                ClassPropertyData.SaveToFile(this, ConfigFileName);
-            }
-        }
-
+        
         private void Tx_src_fname_DoubleClick(object sender, EventArgs e)
         {
             Bt_src_browse_Click(sender, e);
@@ -674,7 +800,7 @@ namespace Rerender
 
         private void label2_Click(object sender, EventArgs e)
         {
-
+            
         }
 
         private void Tx_src_W_TextChanged(object sender, EventArgs e)
@@ -699,6 +825,16 @@ namespace Rerender
                 Tx.Copy();
             }
         }
+
+        private void Tx_src_fname_KeyUp(object sender, KeyEventArgs e)
+        {
+            TextBox Tx = ((TextBox)sender);
+            if (Tx.Text != "")
+            {
+                LoadFiles(Tx.Text.Split(','));
+            }
+        }
+
     }
 
     public enum WorkingState

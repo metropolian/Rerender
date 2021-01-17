@@ -65,7 +65,11 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RerenderWorker.cs" />
     <Compile Include="Taskbar.cs" />
+    <Compile Include="TextBoxExtendable.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <EmbeddedResource Include="FormMainConvertor.resx">
       <DependentUpon>FormMainConvertor.cs</DependentUpon>
     </EmbeddedResource>
@@ -93,15 +97,15 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\DmShared.2\DmShared.2\DmShared.csproj">
+    <ProjectReference Include="..\..\..\_DotNet\DmShared.2\DmShared.2\DmShared.csproj">
       <Project>{a5289d08-4418-4e6d-b284-98d8a61a6c33}</Project>
       <Name>DmShared</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\DmShared.2\DmShared.UI\DmShared.UI.csproj">
+    <ProjectReference Include="..\..\..\_DotNet\DmShared.2\DmShared.UI\DmShared.UI.csproj">
       <Project>{53fe7c43-457b-461d-9a4a-6d115b2c7a3b}</Project>
       <Name>DmShared.UI</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\DmShared.Graphic\DmShared.Graphic.csproj">
+    <ProjectReference Include="..\..\..\_DotNet\DmShared.Graphic\DmShared.Graphic.csproj">
       <Project>{476f69f9-1ed8-4f50-bbad-a28e05c6968e}</Project>
       <Name>DmShared.Graphic</Name>
     </ProjectReference>
